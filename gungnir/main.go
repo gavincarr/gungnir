@@ -34,11 +34,13 @@ type ctLog struct {
 }
 
 var (
-	logListUrl  = "https://www.gstatic.com/ct/log_list/v3/all_logs_list.json"
-	rootDomains map[string]bool
-	rootList    string
-	verbose     bool
-	debug       bool
+	logListUrl   = "https://www.gstatic.com/ct/log_list/v3/all_logs_list.json"
+	rootDomains  map[string]bool
+	rootList     string
+	blockDomains map[string]bool
+	blockList    string
+	verbose      bool
+	debug        bool
 )
 
 var getByScheme = map[string]func(*url.URL) ([]byte, error){
@@ -128,40 +130,54 @@ func createLogClient(key []byte, url string) (*client.LogClient, error) {
 	return c, nil
 }
 
-// Loads root domains from a file into the global rootDomains map
-func loadRootDomains(filePath string) error {
+// Loads domains from a file into a domains map
+func loadDomains(filePath string) (map[string]bool, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return err
+		return map[string]bool{}, err
 	}
 	defer file.Close()
 
 	// Initialize the map
-	rootDomains = make(map[string]bool)
+	domainmap := make(map[string]bool)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		rootDomains[scanner.Text()] = true
+		domainmap[scanner.Text()] = true
 	}
 
-	return scanner.Err()
+	return domainmap, scanner.Err()
 }
 
-// Checks if a domain is a subdomain of any root domain in the global map
-func isSubdomain(domain string) bool {
-	if _, ok := rootDomains[domain]; ok {
+// matchDomain returns true if domain is a subdomain of any entry in domainMap
+func matchDomain(domain string, domainMap map[string]bool) bool {
+	if _, ok := domainMap[domain]; ok {
 		return true
 	}
 
 	parts := strings.Split(domain, ".")
 	for i := range parts {
 		parentDomain := strings.Join(parts[i:], ".")
-		if _, ok := rootDomains[parentDomain]; ok {
+		if _, ok := domainMap[parentDomain]; ok {
 			return true
 		}
 	}
 
 	return false
+}
+
+// output prints domain if a subdomain of any entry in rootDomains
+// (or rootDomains is empty) and NOT a subdomain of any entry in blockDomains
+func output(domain string) {
+	if len(rootDomains) > 0 && !matchDomain(domain, rootDomains) {
+		return
+	}
+
+	if len(blockDomains) > 0 && matchDomain(domain, blockDomains) {
+		return
+	}
+
+	fmt.Println(domain)
 }
 
 // Prints out a short bit of info about |cert|, found at |index| in the
@@ -201,17 +217,13 @@ func logCertInfo(entry *ct.RawLogEntry) {
 	}
 
 	if cn != "" {
-		if len(rootDomains) == 0 || isSubdomain(cn) {
-			fmt.Println(cn)
-		}
+		output(cn)
 	}
 	for _, domain := range dnsnames {
 		if domain == cn {
 			continue
 		}
-		if len(rootDomains) == 0 || isSubdomain(domain) {
-			fmt.Println(domain)
-		}
+		output(domain)
 	}
 }
 
@@ -330,13 +342,23 @@ func processEntries(results *ct.GetEntriesResponse, start int64) int64 {
 func main() {
 	var err error
 
-	flag.StringVar(&rootList, "r", "", "Path to the list of root domains to filter against")
+	flag.StringVar(&rootList, "r", "", "Path to a list of root/include domains to filter against")
+	flag.StringVar(&blockList, "b", "", "Path to a list of block/exclude domains to filter against")
 	flag.BoolVar(&verbose, "v", false, "Output go logs (500/429 errors) to command line")
 	flag.BoolVar(&debug, "debug", false, "Debug CT logs to see if you are keeping up")
 	flag.Parse()
 
 	if rootList != "" {
-		loadRootDomains(rootList)
+		rootDomains, err = loadDomains(rootList)
+		if err != nil {
+			panic(err)
+		}
+	}
+	if blockList != "" {
+		blockDomains, err = loadDomains(blockList)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	ctLogs, err := populateLogs(logListUrl)
