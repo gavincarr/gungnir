@@ -170,21 +170,32 @@ func logCertInfo(entry *ct.RawLogEntry) {
 	parsedEntry, err := entry.ToLogEntry()
 	if x509.IsFatal(err) || parsedEntry.X509Cert == nil {
 		log.Printf("Process cert at index %d: <unparsed: %v>", entry.Index, err)
-	} else {
-		if len(rootDomains) == 0 {
+		return
+	}
+
+	if len(rootDomains) == 0 {
+		if parsedEntry.X509Cert.Subject.CommonName != "" {
 			fmt.Println(parsedEntry.X509Cert.Subject.CommonName)
-			for _, domain := range parsedEntry.X509Cert.DNSNames {
+		}
+		for _, domain := range parsedEntry.X509Cert.DNSNames {
+			if domain != parsedEntry.X509Cert.Subject.CommonName {
 				fmt.Println(domain)
 			}
-		} else {
-			if isSubdomain(parsedEntry.X509Cert.Subject.CommonName) {
-				fmt.Println(parsedEntry.X509Cert.Subject.CommonName)
-			}
-			for _, domain := range parsedEntry.X509Cert.DNSNames {
-				if isSubdomain(domain) {
-					fmt.Println(domain)
-				}
-			}
+		}
+		return
+	}
+
+	if isSubdomain(parsedEntry.X509Cert.Subject.CommonName) {
+		if parsedEntry.X509Cert.Subject.CommonName != "" {
+			fmt.Println(parsedEntry.X509Cert.Subject.CommonName)
+		}
+	}
+	for _, domain := range parsedEntry.X509Cert.DNSNames {
+		if domain == parsedEntry.X509Cert.Subject.CommonName {
+			continue
+		}
+		if isSubdomain(domain) {
+			fmt.Println(domain)
 		}
 	}
 }
@@ -195,21 +206,32 @@ func logPrecertInfo(entry *ct.RawLogEntry) {
 	parsedEntry, err := entry.ToLogEntry()
 	if x509.IsFatal(err) || parsedEntry.Precert == nil {
 		log.Printf("Process precert at index %d: <unparsed: %v>", entry.Index, err)
-	} else {
-		if len(rootDomains) == 0 {
+		return
+	}
+
+	if len(rootDomains) == 0 {
+		if parsedEntry.Precert.TBSCertificate.Subject.CommonName != "" {
 			fmt.Println(parsedEntry.Precert.TBSCertificate.Subject.CommonName)
-			for _, domain := range parsedEntry.Precert.TBSCertificate.DNSNames {
+		}
+		for _, domain := range parsedEntry.Precert.TBSCertificate.DNSNames {
+			if domain != parsedEntry.Precert.TBSCertificate.Subject.CommonName {
 				fmt.Println(domain)
 			}
-		} else {
-			if isSubdomain(parsedEntry.Precert.TBSCertificate.Subject.CommonName) {
-				fmt.Println(parsedEntry.Precert.TBSCertificate.Subject.CommonName)
-			}
-			for _, domain := range parsedEntry.Precert.TBSCertificate.DNSNames {
-				if isSubdomain(domain) {
-					fmt.Println(domain)
-				}
-			}
+		}
+		return
+	}
+
+	if isSubdomain(parsedEntry.Precert.TBSCertificate.Subject.CommonName) {
+		if parsedEntry.Precert.TBSCertificate.Subject.CommonName != "" {
+			fmt.Println(parsedEntry.Precert.TBSCertificate.Subject.CommonName)
+		}
+	}
+	for _, domain := range parsedEntry.Precert.TBSCertificate.DNSNames {
+		if domain == parsedEntry.Precert.TBSCertificate.Subject.CommonName {
+			continue
+		}
+		if isSubdomain(domain) {
+			fmt.Println(domain)
 		}
 	}
 }
