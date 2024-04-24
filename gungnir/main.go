@@ -168,69 +168,48 @@ func isSubdomain(domain string) bool {
 // specified log
 func logCertInfo(entry *ct.RawLogEntry) {
 	parsedEntry, err := entry.ToLogEntry()
-	if x509.IsFatal(err) || parsedEntry.X509Cert == nil {
+	if x509.IsFatal(err) {
 		log.Printf("Process cert at index %d: <unparsed: %v>", entry.Index, err)
 		return
 	}
 
-	if len(rootDomains) == 0 {
-		if parsedEntry.X509Cert.Subject.CommonName != "" {
-			fmt.Println(parsedEntry.X509Cert.Subject.CommonName)
+	var cn string
+	var dnsnames []string
+
+	switch entry.Leaf.TimestampedEntry.EntryType {
+	case ct.X509LogEntryType:
+		cert := parsedEntry.X509Cert
+		if cert == nil {
+			log.Printf("Process cert at index %d: <nil>", entry.Index)
+			return
 		}
-		for _, domain := range parsedEntry.X509Cert.DNSNames {
-			if domain != parsedEntry.X509Cert.Subject.CommonName {
-				fmt.Println(domain)
-			}
+		cn = cert.Subject.CommonName
+		dnsnames = cert.DNSNames
+	case ct.PrecertLogEntryType:
+		cert := parsedEntry.Precert
+		if cert == nil {
+			log.Printf("Process precert at index %d: <nil>", entry.Index)
+			return
+		}
+		cn = cert.TBSCertificate.Subject.CommonName
+		dnsnames = cert.TBSCertificate.DNSNames
+	default:
+		if verbose {
+			log.Println("Unknown entry type")
 		}
 		return
 	}
 
-	if isSubdomain(parsedEntry.X509Cert.Subject.CommonName) {
-		if parsedEntry.X509Cert.Subject.CommonName != "" {
-			fmt.Println(parsedEntry.X509Cert.Subject.CommonName)
+	if cn != "" {
+		if len(rootDomains) == 0 || isSubdomain(cn) {
+			fmt.Println(cn)
 		}
 	}
-	for _, domain := range parsedEntry.X509Cert.DNSNames {
-		if domain == parsedEntry.X509Cert.Subject.CommonName {
+	for _, domain := range dnsnames {
+		if domain == cn {
 			continue
 		}
-		if isSubdomain(domain) {
-			fmt.Println(domain)
-		}
-	}
-}
-
-// Prints out a short bit of info about |precert|, found at |index| in the
-// specified log
-func logPrecertInfo(entry *ct.RawLogEntry) {
-	parsedEntry, err := entry.ToLogEntry()
-	if x509.IsFatal(err) || parsedEntry.Precert == nil {
-		log.Printf("Process precert at index %d: <unparsed: %v>", entry.Index, err)
-		return
-	}
-
-	if len(rootDomains) == 0 {
-		if parsedEntry.Precert.TBSCertificate.Subject.CommonName != "" {
-			fmt.Println(parsedEntry.Precert.TBSCertificate.Subject.CommonName)
-		}
-		for _, domain := range parsedEntry.Precert.TBSCertificate.DNSNames {
-			if domain != parsedEntry.Precert.TBSCertificate.Subject.CommonName {
-				fmt.Println(domain)
-			}
-		}
-		return
-	}
-
-	if isSubdomain(parsedEntry.Precert.TBSCertificate.Subject.CommonName) {
-		if parsedEntry.Precert.TBSCertificate.Subject.CommonName != "" {
-			fmt.Println(parsedEntry.Precert.TBSCertificate.Subject.CommonName)
-		}
-	}
-	for _, domain := range parsedEntry.Precert.TBSCertificate.DNSNames {
-		if domain == parsedEntry.Precert.TBSCertificate.Subject.CommonName {
-			continue
-		}
-		if isSubdomain(domain) {
+		if len(rootDomains) == 0 || isSubdomain(domain) {
 			fmt.Println(domain)
 		}
 	}
@@ -343,16 +322,7 @@ func processEntries(results *ct.GetEntriesResponse, start int64) int64 {
 			break
 		}
 
-		switch entryType := rle.Leaf.TimestampedEntry.EntryType; entryType {
-		case ct.X509LogEntryType:
-			logCertInfo(rle)
-		case ct.PrecertLogEntryType:
-			logPrecertInfo(rle)
-		default:
-			if verbose {
-				log.Println("Unknown entry")
-			}
-		}
+		logCertInfo(rle)
 	}
 	return index
 }
