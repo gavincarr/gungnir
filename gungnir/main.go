@@ -39,6 +39,7 @@ var (
 	rootList     string
 	blockDomains map[string]bool
 	blockList    string
+	singleLine   bool
 	verbose      bool
 	debug        bool
 )
@@ -166,18 +167,19 @@ func matchDomain(domain string, domainMap map[string]bool) bool {
 	return false
 }
 
-// output prints domain if a subdomain of any entry in rootDomains
-// (or rootDomains is empty) and NOT a subdomain of any entry in blockDomains
-func output(domain string) {
+// domainAppend appends domain to domains iff domain is a subdomain of any
+// entry in rootDomains (or rootDomains is empty) and domain is NOT a
+// subdomain of any entry in blockDomains
+func domainAppend(domains []string, domain string) []string {
 	if len(rootDomains) > 0 && !matchDomain(domain, rootDomains) {
-		return
+		return domains
 	}
 
 	if len(blockDomains) > 0 && matchDomain(domain, blockDomains) {
-		return
+		return domains
 	}
 
-	fmt.Println(domain)
+	return append(domains, domain)
 }
 
 // Prints out a short bit of info about |cert|, found at |index| in the
@@ -216,14 +218,24 @@ func logCertInfo(entry *ct.RawLogEntry) {
 		return
 	}
 
+	domains := make([]string, 0, len(dnsnames)+1)
 	if cn != "" {
-		output(cn)
+		domains = domainAppend(domains, cn)
 	}
 	for _, domain := range dnsnames {
 		if domain == cn {
 			continue
 		}
-		output(domain)
+		domains = domainAppend(domains, domain)
+	}
+
+	if singleLine {
+		fmt.Println(strings.Join(domains, " "))
+		return
+	}
+
+	for _, domain := range domains {
+		fmt.Println(domain)
 	}
 }
 
@@ -344,6 +356,7 @@ func main() {
 
 	flag.StringVar(&rootList, "r", "", "Path to a list of root/include domains to filter against")
 	flag.StringVar(&blockList, "b", "", "Path to a list of block/exclude domains to filter against")
+	flag.BoolVar(&singleLine, "s", false, "Output all domains from a cert on a single line, space-separated")
 	flag.BoolVar(&verbose, "v", false, "Output go logs (500/429 errors) to command line")
 	flag.BoolVar(&debug, "debug", false, "Debug CT logs to see if you are keeping up")
 	flag.Parse()
